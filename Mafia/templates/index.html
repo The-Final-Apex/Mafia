@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Mafia Game</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <h1>Mafia Game</h1>
+  <form action="/create" method="POST">
+    <button type="submit">Create Game</button>
+  </form>
+  <hr>
+  <h3>Join Lobby</h3>
+  <form id="joinForm">
+    <input type="text" id="lobbyId" placeholder="Lobby Code">
+    <button type="submit">Join</button>
+  </form>
+  <script>
+    document.getElementById("joinForm").onsubmit = function(e) {
+      e.preventDefault();
+      const code = document.getElementById("lobbyId").value;
+      window.location.href = "/lobby/" + code;
+    }
+  </script>
+</body>
+</html>

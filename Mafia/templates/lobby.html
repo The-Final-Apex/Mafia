@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Lobby {{ lobby_id }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>Mafia Lobby</h1>
+    <p>Lobby Code: <span id="lobby-code">{{ lobby_id }}</span>
+      <button onclick="copyCode()">Copy</button>
+    </p>
+
+    <div id="join-box">
+      <input id="name" placeholder="Enter your name">
+      <button onclick="joinLobby()">Join Lobby</button>
+    </div>
+
+    <div class="flex">
+      <div class="card">
+        <h2>Players (<span id="count">0</span>)</h2>
+        <div id="players"></div>
+      </div>
+
+      <div class="card">
+        <h2>Chat</h2>
+        <div id="chat-box"></div>
+        <input id="chat-input" placeholder="Type...">
+        <button onclick="sendChat()">Send</button>
+      </div>
+    </div>
+
+    <div id="admin-settings" class="card" style="display:none;">
+      <h2>Admin Settings</h2>
+      <label>Min Players: <input type="number" id="minPlayers"></label><br>
+      <label>Max Players: <input type="number" id="maxPlayers"></label><br>
+      <label>Day Duration (s): <input type="number" id="dayDuration"></label><br>
+      <label>Night Duration (s): <input type="number" id="nightDuration"></label><br>
+      <label>Mafia Count: <input type="number" id="mafiaCount"></label><br>
+      <button onclick="saveSettings()">Save Settings</button>
+      <button id="startBtn" onclick="startGame()">Start Game</button>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    const lobbyId = "{{ lobby_id }}";
+    let playerName = null;
+    let adminName = null;
+
+    function copyCode() {
+      navigator.clipboard.writeText("{{ lobby_id }}");
+      alert("Copied lobby code!");
+    }
+
+    function joinLobby() {
+      playerName = document.getElementById("name").value;
+      socket.emit("join_lobby", {name: playerName, lobby: lobbyId});
+      document.getElementById("join-box").style.display = "none";
+    }
+
+    function renderLobby(data) {
+      const players = data.players;
+      adminName = data.admin;
+      document.getElementById("players").innerHTML = players.join("<br>");
+      document.getElementById("count").innerText = players.length;
+
+      if(playerName === adminName) {
+        document.getElementById("admin-settings").style.display = "block";
+        loadSettings(data.settings);
+      }
+    }
+
+    socket.on("update_lobby", renderLobby);
+    socket.on("full_state", renderLobby);
+
+    function sendChat() {
+      const msg = document.getElementById("chat-input").value;
+      if(msg.trim() === "") return;
+      socket.emit("chat", {lobby: lobbyId, player: playerName, message: msg});
+      document.getElementById("chat-input").value = "";
+    }
+
+    socket.on("chat", data => {
+      const box = document.getElementById("chat-box");
+      box.innerHTML += `<b>${data.player}:</b> ${data.message}<br>`;
+      box.scrollTop = box.scrollHeight;
+    });
+
+    function loadSettings(settings) {
+      document.getElementById("minPlayers").value = settings.min_players;
+      document.getElementById("maxPlayers").value = settings.max_players;
+      document.getElementById("dayDuration").value = settings.day_duration;
+      document.getElementById("nightDuration").value = settings.night_duration;
+      document.getElementById("mafiaCount").value = settings.mafia_count;
+    }
+
+    function saveSettings() {
+      const settings = {
+        min_players: parseInt(document.getElementById("minPlayers").value),
+        max_players: parseInt(document.getElementById("maxPlayers").value),
+        day_duration: parseInt(document.getElementById("dayDuration").value),
+        night_duration: parseInt(document.getElementById("nightDuration").value),
+        mafia_count: parseInt(document.getElementById("mafiaCount").value),
+      };
+      socket.emit("update_settings", {lobby: lobbyId, settings: settings});
+    }
+
+    socket.on("settings_updated", settings => {
+      if(playerName !== adminName) {
+        loadSettings(settings);
+      }
+    });
+
+    function startGame() {
+      socket.emit("start_game", {lobby: lobbyId});
+    }
+
+    socket.on("game_starting", data => {
+      alert(data.msg);
+    });
+  </script>
+</body>
+</html>
