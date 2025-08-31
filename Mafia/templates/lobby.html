@@ -1,126 +1,210 @@
+<!-- templates/lobby.html -->
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>Lobby {{ lobby_id }}</title>
-  <link rel="stylesheet" href="/static/style.css">
-  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <title>Lobby - Mafia Game</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; background-color: #1a1a1a; color: #fff; }
+        .container { background: #2d2d2d; padding: 20px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,0,0,0.5); }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .lobby-code { background: #4CAF50; padding: 10px; border-radius: 5px; font-weight: bold; }
+        .player-list { margin: 20px 0; padding: 15px; border: 1px solid #444; border-radius: 5px; background: #333; }
+        .player { padding: 10px; border-bottom: 1px solid #444; display: flex; justify-content: space-between; }
+        .player:last-child { border-bottom: none; }
+        .admin-badge { background: #ff9800; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; }
+        .settings { margin: 20px 0; padding: 15px; border: 1px solid #444; border-radius: 5px; background: #333; }
+        .setting-item { margin: 10px 0; display: flex; justify-content: space-between; align-items: center; }
+        .chat { border: 1px solid #444; padding: 10px; height: 300px; overflow-y: scroll; margin: 20px 0; border-radius: 5px; background: #333; }
+        .message { margin: 8px 0; padding: 5px; border-radius: 5px; background: #2d2d2d; }
+        input[type="text"] { padding: 10px; width: calc(100% - 100px); border-radius: 5px; border: 1px solid #444; background: #2d2d2d; color: #fff; }
+        button { padding: 10px 15px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:disabled { background: #666; cursor: not-allowed; }
+        #start-game { background: #2196F3; padding: 12px 20px; font-size: 16px; width: 100%; margin-top: 10px; }
+        #start-game:hover:not(:disabled) { background: #0b7dda; }
+        .player-count { color: #4CAF50; font-weight: bold; }
+        .min-players { color: #ff9800; margin-left: 10px; }
+        select, input[type="number"] { padding: 5px; border-radius: 5px; border: 1px solid #444; background: #2d2d2d; color: #fff; }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Mafia Lobby</h1>
-    <p>Lobby Code: <span id="lobby-code">{{ lobby_id }}</span>
-      <button onclick="copyCode()">Copy</button>
-    </p>
+    <div class="container">
+        <div class="header">
+            <h1>Lobby: {{ lobby.code }}</h1>
+            <div class="lobby-code">Code: {{ lobby.code }}</div>
+        </div>
 
-    <div id="join-box">
-      <input id="name" placeholder="Enter your name">
-      <button onclick="joinLobby()">Join Lobby</button>
+        <div class="player-list">
+            <h2>Players <span class="player-count">({{ lobby.player_count }}/{{ lobby.settings.max_players }})</span>
+                <span class="min-players">Minimum: {{ lobby.settings.min_players }}</span>
+            </h2>
+            {% for player in lobby.players %}
+            <div class="player">
+                <span>{{ player.name }}</span>
+                {% if player.is_admin %}<span class="admin-badge">ADMIN</span>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if lobby.players[0].id == player_id %}
+        <div class="settings">
+            <h2>Game Settings</h2>
+            <div class="setting-item">
+                <label for="doctor-toggle">Include Doctor Role</label>
+                <input type="checkbox" id="doctor-toggle" {% if lobby.settings.doctor %}checked{% endif %}>
+            </div>
+            <div class="setting-item">
+                <label for="detective-toggle">Include Detective Role</label>
+                <input type="checkbox" id="detective-toggle" {% if lobby.settings.detective %}checked{% endif %}>
+            </div>
+            <div class="setting-item">
+                <label for="night-chat-toggle">Mafia Night Chat</label>
+                <input type="checkbox" id="night-chat-toggle" {% if lobby.settings.night_chat %}checked{% endif %}>
+            </div>
+            <div class="setting-item">
+                <label for="max-players">Max Players</label>
+                <input type="number" id="max-players" min="4" max="16" value="{{ lobby.settings.max_players }}">
+            </div>
+            <div class="setting-item">
+                <label for="min-players">Min Players to Start</label>
+                <input type="number" id="min-players" min="4" max="{{ lobby.settings.max_players }}" value="{{ lobby.settings.min_players }}">
+            </div>
+            <div class="setting-item">
+                <label for="game-time">Game Time (seconds)</label>
+                <input type="number" id="game-time" min="30" max="300" value="{{ lobby.settings.game_time }}">
+            </div>
+            <button id="apply-settings">Apply Settings</button>
+        </div>
+        {% endif %}
+
+        <button id="start-game" {% if lobby.player_count < lobby.settings.min_players %}disabled{% endif %}>
+            {% if lobby.player_count < lobby.settings.min_players %}
+            Need {{ lobby.settings.min_players - lobby.player_count }} more players
+            {% else %}
+            Start Game
+            {% endif %}
+        </button>
+
+        <div class="chat">
+            <div id="chat-messages">
+                {% for message in lobby.messages %}
+                <div class="message"><strong>[{{ message.timestamp }}]</strong> {{ message.message }}</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="chat-input">
+            <input type="text" id="message-input" placeholder="Type your message...">
+            <button id="send-button">Send</button>
+        </div>
     </div>
 
-    <div class="flex">
-      <div class="card">
-        <h2>Players (<span id="count">0</span>)</h2>
-        <div id="players"></div>
-      </div>
+    <script>
+        const socket = io();
+        const lobbyCode = "{{ lobby.code }}";
+        const playerId = "{{ player_id }}";
+        const isAdmin = {{ 'true' if lobby.players[0].id == player_id else 'false' }};
 
-      <div class="card">
-        <h2>Chat</h2>
-        <div id="chat-box"></div>
-        <input id="chat-input" placeholder="Type...">
-        <button onclick="sendChat()">Send</button>
-      </div>
-    </div>
+        socket.emit('join_lobby', { lobby_code: lobbyCode });
 
-    <div id="admin-settings" class="card" style="display:none;">
-      <h2>Admin Settings</h2>
-      <label>Min Players: <input type="number" id="minPlayers"></label><br>
-      <label>Max Players: <input type="number" id="maxPlayers"></label><br>
-      <label>Day Duration (s): <input type="number" id="dayDuration"></label><br>
-      <label>Night Duration (s): <input type="number" id="nightDuration"></label><br>
-      <label>Mafia Count: <input type="number" id="mafiaCount"></label><br>
-      <button onclick="saveSettings()">Save Settings</button>
-      <button id="startBtn" onclick="startGame()">Start Game</button>
-    </div>
-  </div>
+        socket.on('lobby_update', function(data) {
+            // Update player list
+            const playerList = document.querySelector('.player-list');
+            playerList.innerHTML = `
+                <h2>Players <span class="player-count">(${data.player_count}/${data.settings.max_players})</span>
+                    <span class="min-players">Minimum: ${data.settings.min_players}</span>
+                </h2>
+            `;
 
-  <script>
-    const socket = io();
-    const lobbyId = "{{ lobby_id }}";
-    let playerName = null;
-    let adminName = null;
+            data.players.forEach(player => {
+                const playerEl = document.createElement('div');
+                playerEl.className = 'player';
+                playerEl.innerHTML = `
+                    <span>${player.name}</span>
+                    ${player.is_admin ? '<span class="admin-badge">ADMIN</span>' : ''}
+                `;
+                playerList.appendChild(playerEl);
+            });
 
-    function copyCode() {
-      navigator.clipboard.writeText("{{ lobby_id }}");
-      alert("Copied lobby code!");
-    }
+            // Update settings if admin
+            if (isAdmin) {
+                document.getElementById('doctor-toggle').checked = data.settings.doctor;
+                document.getElementById('detective-toggle').checked = data.settings.detective;
+                document.getElementById('night-chat-toggle').checked = data.settings.night_chat;
+                document.getElementById('max-players').value = data.settings.max_players;
+                document.getElementById('min-players').value = data.settings.min_players;
+                document.getElementById('min-players').max = data.settings.max_players;
+                document.getElementById('game-time').value = data.settings.game_time;
+            }
 
-    function joinLobby() {
-      playerName = document.getElementById("name").value;
-      socket.emit("join_lobby", {name: playerName, lobby: lobbyId});
-      document.getElementById("join-box").style.display = "none";
-    }
+            // Update start button
+            const startButton = document.getElementById('start-game');
+            if (data.player_count < data.settings.min_players) {
+                startButton.disabled = true;
+                startButton.textContent = `Need ${data.settings.min_players - data.player_count} more players`;
+            } else {
+                startButton.disabled = false;
+                startButton.textContent = 'Start Game';
+            }
+        });
 
-    function renderLobby(data) {
-      const players = data.players;
-      adminName = data.admin;
-      document.getElementById("players").innerHTML = players.join("<br>");
-      document.getElementById("count").innerText = players.length;
+        socket.on('game_started', function(data) {
+            window.location.href = data.redirect;
+        });
 
-      if(playerName === adminName) {
-        document.getElementById("admin-settings").style.display = "block";
-        loadSettings(data.settings);
-      }
-    }
+        socket.on('new_message', function(data) {
+            const chat = document.getElementById('chat-messages');
+            const message = document.createElement('div');
+            message.className = 'message';
+            message.innerHTML = `<strong>[${data.timestamp}]</strong> ${data.message}`;
+            chat.appendChild(message);
+            chat.scrollTop = chat.scrollHeight;
+        });
 
-    socket.on("update_lobby", renderLobby);
-    socket.on("full_state", renderLobby);
+        socket.on('error', function(data) {
+            alert(data.message);
+        });
 
-    function sendChat() {
-      const msg = document.getElementById("chat-input").value;
-      if(msg.trim() === "") return;
-      socket.emit("chat", {lobby: lobbyId, player: playerName, message: msg});
-      document.getElementById("chat-input").value = "";
-    }
+        document.getElementById('start-game').addEventListener('click', function() {
+            socket.emit('start_game', { lobby_code: lobbyCode });
+        });
 
-    socket.on("chat", data => {
-      const box = document.getElementById("chat-box");
-      box.innerHTML += `<b>${data.player}:</b> ${data.message}<br>`;
-      box.scrollTop = box.scrollHeight;
-    });
+        if (isAdmin) {
+            document.getElementById('apply-settings').addEventListener('click', function() {
+                const settings = {
+                    doctor: document.getElementById('doctor-toggle').checked,
+                    detective: document.getElementById('detective-toggle').checked,
+                    night_chat: document.getElementById('night-chat-toggle').checked,
+                    max_players: parseInt(document.getElementById('max-players').value),
+                    min_players: parseInt(document.getElementById('min-players').value),
+                    game_time: parseInt(document.getElementById('game-time').value)
+                };
 
-    function loadSettings(settings) {
-      document.getElementById("minPlayers").value = settings.min_players;
-      document.getElementById("maxPlayers").value = settings.max_players;
-      document.getElementById("dayDuration").value = settings.day_duration;
-      document.getElementById("nightDuration").value = settings.night_duration;
-      document.getElementById("mafiaCount").value = settings.mafia_count;
-    }
+                socket.emit('update_settings', {
+                    lobby_code: lobbyCode,
+                    settings: settings
+                });
+            });
+        }
 
-    function saveSettings() {
-      const settings = {
-        min_players: parseInt(document.getElementById("minPlayers").value),
-        max_players: parseInt(document.getElementById("maxPlayers").value),
-        day_duration: parseInt(document.getElementById("dayDuration").value),
-        night_duration: parseInt(document.getElementById("nightDuration").value),
-        mafia_count: parseInt(document.getElementById("mafiaCount").value),
-      };
-      socket.emit("update_settings", {lobby: lobbyId, settings: settings});
-    }
+        document.getElementById('send-button').addEventListener('click', function() {
+            const message = document.getElementById('message-input').value;
+            if (message.trim()) {
+                socket.emit('send_message', { lobby_code: lobbyCode, message: message });
+                document.getElementById('message-input').value = '';
+            }
+        });
 
-    socket.on("settings_updated", settings => {
-      if(playerName !== adminName) {
-        loadSettings(settings);
-      }
-    });
+        document.getElementById('message-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('send-button').click();
+            }
+        });
 
-    function startGame() {
-      socket.emit("start_game", {lobby: lobbyId});
-    }
-
-    socket.on("game_starting", data => {
-      alert(data.msg);
-    });
-  </script>
+        // Handle page refresh or navigation
+        window.addEventListener('beforeunload', function() {
+            socket.emit('leave_lobby', { lobby_code: lobbyCode });
+        });
+    </script>
 </body>
 </html>

@@ -1,27 +1,49 @@
+<!-- templates/index.html -->
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>Mafia Game</title>
-  <link rel="stylesheet" href="/static/style.css">
+    <title>Mafia Game</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #1a1a1a; color: #fff; }
+        .container { text-align: center; background: #2d2d2d; padding: 30px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,0,0,0.5); }
+        .form-group { margin: 15px 0; }
+        input, button { padding: 12px; font-size: 16px; border-radius: 5px; border: 1px solid #444; width: 250px; background: #333; color: #fff; }
+        button { background: #4CAF50; color: white; border: none; cursor: pointer; width: 274px; }
+        button:hover { background: #45a049; }
+        .error { color: #ff6b6b; margin: 10px 0; }
+        h1 { color: #fff; text-shadow: 0 0 10px rgba(0,255,0,0.5); }
+        hr { margin: 25px 0; border-color: #444; }
+        .game-title { font-size: 2.5em; margin-bottom: 20px; color: #4CAF50; }
+        .subtitle { color: #ccc; margin-bottom: 30px; }
+    </style>
 </head>
 <body>
-  <h1>Mafia Game</h1>
-  <form action="/create" method="POST">
-    <button type="submit">Create Game</button>
-  </form>
-  <hr>
-  <h3>Join Lobby</h3>
-  <form id="joinForm">
-    <input type="text" id="lobbyId" placeholder="Lobby Code">
-    <button type="submit">Join</button>
-  </form>
-  <script>
-    document.getElementById("joinForm").onsubmit = function(e) {
-      e.preventDefault();
-      const code = document.getElementById("lobbyId").value;
-      window.location.href = "/lobby/" + code;
-    }
-  </script>
+    <div class="container">
+        <div class="game-title">MAFIA</div>
+        <div class="subtitle">A game of deception and deduction</div>
+        
+        {% if error %}
+        <p class="error">{{ error }}</p>
+        {% endif %}
+        
+        <form action="/create" method="post">
+            <div class="form-group">
+                <input type="text" name="player_name" placeholder="Your Name" required>
+            </div>
+            <button type="submit">Create New Game</button>
+        </form>
+        
+        <hr>
+        
+        <form action="/join" method="post">
+            <div class="form-group">
+                <input type="text" name="player_name" placeholder="Your Name" required>
+            </div>
+            <div class="form-group">
+                <input type="text" name="lobby_code" placeholder="Lobby Code" required>
+            </div>
+            <button type="submit">Join Game</button>
+        </form>
+    </div>
 </body>
 </html>

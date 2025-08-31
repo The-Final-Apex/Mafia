@@ -1,0 +1,234 @@
+<!-- templates/game.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Game - Mafia</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background-color: #1a1a1a; color: #fff; }
+        .game-container { display: flex; gap: 20px; }
+        .player-list { width: 250px; background: #2d2d2d; padding: 15px; border-radius: 10px; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+        .player { padding: 10px; border: 1px solid #444; margin-bottom: 8px; border-radius: 5px; background: #333; }
+        .player.dead { opacity: 0.6; background-color: #5a2a2a; }
+        .player.you { border: 2px solid #4CAF50; }
+        .game-area { flex: 1; background: #2d2d2d; padding: 20px; border-radius: 10px; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+        .phase-info { padding: 15px; background: #333; border-radius: 5px; margin-bottom: 15px; }
+        .phase-night { background: #2c3e50; }
+        .phase-day { background: #3498db; }
+        .phase-discussion { background: #9b59b6; }
+        .phase-voting { background: #e74c3c; }
+        .phase-ended { background: #7f8c8d; }
+        .chat { border: 1px solid #444; padding: 10px; height: 400px; overflow-y: scroll; margin: 20px 0; border-radius: 5px; background: #333; }
+        .message { margin: 8px 0; padding: 5px; border-radius: 5px; background: #2d2d2d; }
+        .private-message { background: #3d2d2d; border-left: 3px solid #ff9800; }
+        .action-buttons { margin: 15px 0; }
+        button { padding: 10px 15px; margin: 5px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:disabled { background: #666; cursor: not-allowed; }
+        button:hover:not(:disabled) { background: #45a049; }
+        input[type="text"] { padding: 10px; width: calc(100% - 100px); border-radius: 5px; border: 1px solid #444; background: #2d2d2d; color: #fff; }
+        #send-button { width: 80px; }
+        .votes { float: right; color: #ff9800; font-weight: bold; }
+        .role-badge { float: right; background: #2196F3; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; margin-left: 10px; }
+        .mafia-badge { background: #e74c3c; }
+        .doctor-badge { background: #2ecc71; }
+        .detective-badge { background: #9b59b6; }
+        .time-remaining { font-size: 1.2em; font-weight: bold; color: #ff9800; }
+    </style>
+</head>
+<body>
+    <h1>Mafia Game - Lobby: {{ lobby_code }}</h1>
+
+    <div class="game-container">
+        <div class="player-list">
+            <h2>Players</h2>
+            <div id="players-container"></div>
+        </div>
+
+        <div class="game-area">
+            <div class="phase-info" id="phase-info">
+                <h2 id="phase-title">Game Setup</h2>
+                <p id="time-remaining" class="time-remaining">Time remaining: --:--</p>
+                <p id="role-info">Your role: <span id="player-role">{{ player.role }}</span></p>
+            </div>
+
+            <div class="action-buttons" id="action-buttons">
+                <!-- Action buttons will be added dynamically -->
+            </div>
+
+            <div class="chat">
+                <div id="chat-messages"></div>
+            </div>
+
+            <div class="chat-input">
+                <input type="text" id="message-input" placeholder="Type your message...">
+                <button id="send-button">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const lobbyCode = "{{ lobby_code }}";
+        const playerId = "{{ player.id }}";
+        const playerRole = "{{ player.role }}";
+
+        socket.emit('join_lobby', { lobby_code: lobbyCode });
+
+        socket.on('game_update', function(data) {
+            // Update phase info
+            const phaseTitle = document.getElementById('phase-title');
+            phaseTitle.textContent = `Day ${data.day_number} - ${data.phase.charAt(0).toUpperCase() + data.phase.slice(1)} Phase`;
+
+            // Update phase styling
+            const phaseInfo = document.getElementById('phase-info');
+            phaseInfo.className = 'phase-info';
+            phaseInfo.classList.add('phase-' + data.phase);
+
+            // Update timer
+            const minutes = Math.floor(data.time_remaining / 60);
+            const seconds = data.time_remaining % 60;
+            document.getElementById('time-remaining').textContent =
+                `Time remaining: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+            // Update players list
+            const playersContainer = document.getElementById('players-container');
+            playersContainer.innerHTML = '';
+
+            for (const [id, player] of Object.entries(data.players)) {
+                const playerEl = document.createElement('div');
+                playerEl.className = 'player' + (player.alive ? '' : ' dead');
+                if (id === playerId) playerEl.classList.add('you');
+                playerEl.id = 'player-' + id;
+
+                let roleBadge = '';
+                if (!player.alive || data.phase === "ended") {
+                    roleBadge = `<span class="role-badge">${player.role}</span>`;
+                }
+
+                playerEl.innerHTML = `
+                    ${player.name}
+                    ${player.alive ? `<span class="votes">Votes: ${player.votes}</span>` : ''}
+                    ${roleBadge}
+                `;
+                playersContainer.appendChild(playerEl);
+            }
+
+            // Update action buttons based on phase and role
+            updateActionButtons(data.phase, data.players);
+
+            // Show/hide chat input based on phase and role
+            updateChatVisibility(data.phase, data.players);
+        });
+
+        socket.on('new_message', function(data) {
+            addMessage(data, false);
+        });
+
+        socket.on('private_message', function(data) {
+            addMessage(data, true);
+        });
+
+        function addMessage(data, isPrivate) {
+            const chat = document.getElementById('chat-messages');
+            const message = document.createElement('div');
+            message.className = 'message' + (isPrivate ? ' private-message' : '');
+            message.innerHTML = `<strong>[${data.timestamp}]</strong> ${data.message}`;
+            chat.appendChild(message);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function updateActionButtons(phase, players) {
+            const actionButtons = document.getElementById('action-buttons');
+            actionButtons.innerHTML = '';
+
+            if (phase === 'night') {
+                if ((playerRole === 'mafia' || playerRole === 'doctor' || playerRole === 'detective') && players[playerId].alive) {
+                    const title = document.createElement('h3');
+                    if (playerRole === 'mafia') {
+                        title.textContent = 'Choose someone to eliminate:';
+                    } else if (playerRole === 'doctor') {
+                        title.textContent = 'Choose someone to heal:';
+                    } else if (playerRole === 'detective') {
+                        title.textContent = 'Choose someone to investigate:';
+                    }
+                    actionButtons.appendChild(title);
+
+                    for (const [id, player] of Object.entries(players)) {
+                        if (player.alive && id !== playerId &&
+                            (playerRole !== 'mafia' || player.role !== 'mafia')) {
+                            const button = document.createElement('button');
+                            button.textContent = player.name;
+                            button.onclick = () => {
+                                socket.emit('night_action', {
+                                    lobby_code: lobbyCode,
+                                    target_id: id
+                                });
+                            };
+                            actionButtons.appendChild(button);
+                        }
+                    }
+                } else {
+                    actionButtons.innerHTML = '<p>Wait for the night to end...</p>';
+                }
+            } else if (phase === 'voting') {
+                if (players[playerId].alive) {
+                    const title = document.createElement('h3');
+                    title.textContent = 'Vote for who you think is mafia:';
+                    actionButtons.appendChild(title);
+
+                    for (const [id, player] of Object.entries(players)) {
+                        if (player.alive && id !== playerId) {
+                            const button = document.createElement('button');
+                            button.textContent = player.name;
+                            button.onclick = () => {
+                                socket.emit('cast_vote', {
+                                    lobby_code: lobbyCode,
+                                    target_id: id
+                                });
+                            };
+                            actionButtons.appendChild(button);
+                        }
+                    }
+                } else {
+                    actionButtons.innerHTML = '<p>You are dead and cannot vote.</p>';
+                }
+            } else if (phase === 'ended') {
+                actionButtons.innerHTML = '<p>The game has ended. Return to lobby to start a new game.</p>';
+            }
+        }
+
+        function updateChatVisibility(phase, players) {
+            const messageInput = document.getElementById('message-input');
+            const sendButton = document.getElementById('send-button');
+
+            if (phase === 'night' && playerRole !== 'mafia') {
+                messageInput.disabled = true;
+                sendButton.disabled = true;
+                messageInput.placeholder = 'You can only chat during the day';
+            } else if (!players[playerId].alive) {
+                messageInput.disabled = true;
+                sendButton.disabled = true;
+                messageInput.placeholder = 'You are dead and cannot chat';
+            } else {
+                messageInput.disabled = false;
+                sendButton.disabled = false;
+                messageInput.placeholder = 'Type your message...';
+            }
+        }
+
+        document.getElementById('send-button').addEventListener('click', function() {
+            const message = document.getElementById('message-input').value;
+            if (message.trim()) {
+                socket.emit('send_message', { lobby_code: lobbyCode, message: message });
+                document.getElementById('message-input').value = '';
+            }
+        });
+
+        document.getElementById('message-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('send-button').click();
+            }
+        });
+    </script>
+</body>
+</html>
